@@ -2,9 +2,9 @@ require('dotenv').config() // it's important that dotenv gets imported before th
 const express = require('express')
 const app = express()
 
-const Person = require('./models/person')
+const Note = require('./models/note')
 
-let persons = [
+let notes = [
 ]
 
 app.use(express.static('dist'))
@@ -15,6 +15,16 @@ const requestLogger = (request, response, next) => {
   console.log('Body:  ', request.body)
   console.log('---')
   next()
+}
+
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message)
+
+  if (error.name === 'CastError') {
+    return response.status(400).send({error: 'malformatted id'})
+  }
+
+  next(error)
 }
 
 const cors = require('cors')
@@ -28,47 +38,71 @@ const unknownEndpoint = (request, response) => {
   response.status(404).send({ error: 'unknown endpoint' })
 }
 
+
 app.get('/', (request, response) => {
   response.send('<h1>Hello World!</h1>')
 })
 
-app.get('/api/persons', (request, response) => {
-  Person.find({}).then(persons => {
-    response.json(persons)
+app.get('/api/notes', (request, response) => {
+  Note.find({}).then(notes => {
+    response.json(notes)
   })
 })
 
-app.post('/api/persons', (request, response) => {
+app.post('/api/notes', (request, response) => {
   const body = request.body
 
-  if (!body.name || !body.phone) {
+  if (!body.content) {
     return response.status(400).json({ error: 'content missing' })
   }
 
-  const person = new Person({
-    name: body.name,
-    phone: body.phone,
+  const note = new Note({
+    content: body.content,
+    important: body.important,
   })
 
-  person.save().then(savedPerson => {
-    response.json(savedPerson)
-  })
-})
-
-app.get('/api/persons/:id', (request, response) => {
-  Person.findById(request.params.id).then(person => {
-    response.json(person)
+  note.save().then(savedNote => {
+    response.json(savedNote)
   })
 })
 
-app.delete('/api/persons/:id', (request, response) => {
-  const id = Number(request.params.id)
-  persons = persons.filter(person => person.id !== id)
+app.get('/api/notes/:id', (request, response) => {
+  Note.findById(request.params.id)
+    .then(note => {
+      if (note) {
+        response.json(note)
+      } else {
+        response.status(404).end()
+      }
+  }).catch(error => next(error))
+})
 
-  response.status(204).end()
+app.delete('/api/notes/:id', (request, response, next) => {
+  Note.findByIdAndDelete(request.params.id)
+    .then(result => {
+      response.status(204).end()
+    })
+    .catch(error => next(error))
+})
+
+app.put('/api/notes/:id', (request, response, next) => {
+  const body = request.body
+
+  const note = {
+    content: body.content,
+    important: body.important,
+  }
+
+  Note.findByIdAndUpdate(request.params.id, note, { new: true })
+    .then(updatedNote => {
+      response.json(updatedNote)
+    })
+    .catch(error => next(error))
 })
 
 app.use(unknownEndpoint)
+
+app.use(errorHandler)
 
 const PORT = process.env.PORT
 app.listen(PORT, () => {
